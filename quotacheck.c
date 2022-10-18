@@ -628,7 +628,7 @@ int ask_yn(char *q, int def)
 static int process_file(struct mount_entry *mnt, int type)
 {
 	char *qfname = NULL;
-	int fd = -1, ret;
+	int fd = -1, ret, qcmd;
 
 	debug(FL_DEBUG, _("Going to check %s quota file of %s\n"), _(type2name(type)),
 	      mnt->me_dir);
@@ -648,9 +648,12 @@ Please turn quotas off or use -f to force checking.\n"),
 				    type2name(type), mnt->me_dir);
 		}
 		/* At least sync quotas so damage will be smaller */
-		if (quotactl(QCMD((kernel_iface == IFACE_GENERIC)? Q_SYNC : Q_6_5_SYNC, type),
-			     mnt->me_devname, 0, NULL) < 0)
-			die(4, _("Error while syncing quotas on %s: %s\n"), mnt->me_devname, strerror(errno));
+		qcmd = QCMD((kernel_iface == IFACE_GENERIC) ?
+			    Q_SYNC : Q_6_5_SYNC, type);
+		ret = do_quotactl(qcmd, mnt->me_devname, mnt->me_dir, 0, NULL);
+		if (ret < 0)
+			die(4, _("Error while syncing quotas on %s: %s\n"),
+			    mnt->me_devname, strerror(errno));
 	}
 
 	if (!(flags & FL_NEWFILE)) {	/* Need to buffer file? */
@@ -844,24 +847,37 @@ static int dump_to_file(struct mount_entry *mnt, int type)
 		return 0;
 	if (kern_quota_on(mnt, type, cfmt) >= 0) {	/* Quota turned on? */
 		char *filename;
+		int ret, qcmd;
 
 		if (get_qf_name(mnt, type, cfmt, NF_FORMAT, &filename) < 0)
 			errstr(_("Cannot find checked quota file for %ss on %s!\n"), _(type2name(type)), mnt->me_devname);
 		else {
-			if (quotactl(QCMD((kernel_iface == IFACE_GENERIC) ? Q_QUOTAOFF : Q_6_5_QUOTAOFF, type),
-				     mnt->me_devname, 0, NULL) < 0)
+			qcmd = QCMD((kernel_iface == IFACE_GENERIC) ?
+				    Q_QUOTAOFF : Q_6_5_QUOTAOFF, type);
+			ret = do_quotactl(qcmd, mnt->me_devname,
+					  mnt->me_dir, 0, NULL);
+			if (ret < 0) {
 				errstr(_("Cannot turn %s quotas off on %s: %s\nKernel won't know about changes quotacheck did.\n"),
 					_(type2name(type)), mnt->me_devname, strerror(errno));
-			else {
-				int ret;
-
-				/* Rename files - if it fails we cannot do anything better than just turn on quotas again */
+			} else {
+				int id;
+				/*
+				 * Rename files - if it fails we cannot do
+				 * anything better than just turn on quotas
+				 * again.
+				 */
 				rename_files(mnt, type);
 
-				if (kernel_iface == IFACE_GENERIC)
-					ret = quotactl(QCMD(Q_QUOTAON, type), mnt->me_devname, util2kernfmt(cfmt), filename);
-				else
-					ret = quotactl(QCMD(Q_6_5_QUOTAON, type), mnt->me_devname, 0, filename);
+				if (kernel_iface == IFACE_GENERIC) {
+					id = util2kernfmt(cfmt);
+					qcmd = QCMD(Q_QUOTAON, type);
+				} else {
+					id = 0;
+					qcmd = QCMD(Q_6_5_QUOTAON, type);
+				}
+
+				ret = do_quotactl(qcmd, mnt->me_devname,
+						  mnt->me_dir, id, filename);
 				if (ret < 0)
 					errstr(_("Cannot turn %s quotas on on %s: %s\nKernel won't know about changes quotacheck did.\n"),
 						_(type2name(type)), mnt->me_devname, strerror(errno));

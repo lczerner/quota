@@ -274,10 +274,13 @@ static int v2_init_io(struct quota_handle *h)
 		}
 		else {
 			struct v2_kern_dqinfo kdqinfo;
+			int ret;
 
-			if (quotactl(QCMD(Q_V2_GETINFO, h->qh_type), h->qh_quotadev, 0, (void *)&kdqinfo) < 0) {
-				/* Temporary check just before fix gets to kernel */
-				if (errno == EPERM)	/* Don't have permission to get information? */
+			ret = handle_quotactl(Q_V2_GETINFO, h, 0,
+					      (void *)&kdqinfo);
+			if (ret < 0) {
+				/* Temporary check before fix gets to kernel */
+				if (errno == EPERM)
 					return 0;
 				return -1;
 			}
@@ -403,8 +406,8 @@ static int v2_write_info(struct quota_handle *h)
 			kdqinfo.dqi_blocks = h->qh_info.u.v2_mdqi.dqi_qtree.dqi_blocks;
 			kdqinfo.dqi_free_blk = h->qh_info.u.v2_mdqi.dqi_qtree.dqi_free_blk;
 			kdqinfo.dqi_free_entry = h->qh_info.u.v2_mdqi.dqi_qtree.dqi_free_entry;
-			if (quotactl(QCMD(Q_V2_SETGRACE, h->qh_type), h->qh_quotadev, 0, (void *)&kdqinfo) < 0 ||
-			    quotactl(QCMD(Q_V2_SETFLAGS, h->qh_type), h->qh_quotadev, 0, (void *)&kdqinfo) < 0)
+			if (handle_quotactl(Q_V2_SETGRACE, h, 0, (void *)&kdqinfo) < 0 ||
+			    handle_quotactl(Q_V2_SETFLAGS, h, 0, (void *)&kdqinfo) < 0)
 					return -1;
 		}
 	}
@@ -439,9 +442,11 @@ static struct dquot *v2_read_dquot(struct quota_handle *h, qid_t id)
 			}
 		}
 		else {
+			int ret;
 			struct v2_kern_dqblk kdqblk;
-
-			if (quotactl(QCMD(Q_V2_GETQUOTA, h->qh_type), h->qh_quotadev, id, (void *)&kdqblk) < 0) {
+			ret = handle_quotactl(Q_V2_GETQUOTA, h, id,
+					      (void *)&kdqblk);
+			if (ret < 0) {
 				free(dquot);
 				return NULL;
 			}
@@ -472,7 +477,7 @@ static int v2_commit_dquot(struct dquot *dquot, int flags)
 		}
 		else {
 			struct v2_kern_dqblk kdqblk;
-			int cmd;
+			int cmd, ret;
 
 			if (flags == COMMIT_USAGE)
 				cmd = Q_V2_SETUSE;
@@ -485,8 +490,9 @@ static int v2_commit_dquot(struct dquot *dquot, int flags)
 			else
 				cmd = Q_V2_SETQUOTA;
 			v2_util2kerndqblk(&kdqblk, &dquot->dq_dqb);
-			if (quotactl(QCMD(cmd, dquot->dq_h->qh_type), dquot->dq_h->qh_quotadev,
-			     dquot->dq_id, (void *)&kdqblk) < 0)
+			ret = handle_quotactl(cmd, dquot->dq_h, dquot->dq_id,
+					      (void *)&kdqblk);
+			if (ret < 0)
 				return -1;
 		}
 		return 0;

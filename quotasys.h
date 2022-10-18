@@ -178,7 +178,7 @@ void init_kernel_interface(void);
  * Check whether is quota turned on on given device for given type. This
  * works for XFS for all kernels and for other filesystems since kernel 4.1.
  */
-int kern_quota_state_xfs(const char *dev, int type);
+int kern_quota_state_xfs(struct mount_entry *mnt, int type);
 
 /* Check whether is quota turned on on given device for given type */
 int kern_quota_on(struct mount_entry *mnt, int type, int fmt);
@@ -211,5 +211,8 @@ int ext4_supports_quota_feature(void);
 #define QOF_DEFAULT	0
 #define QOF_CSV		1
 #define QOF_XML		2
+
+int do_quotactl(int cmd, const char *dev, const char *path, qid_t id, void *data);
+int handle_quotactl(int call, struct quota_handle *h, qid_t id, void *data);
 
 #endif /* GUARD_QUOTASYS_H */

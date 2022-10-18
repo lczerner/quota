@@ -182,5 +182,6 @@ enum {
 #endif
 
 long quotactl(int, const char *, qid_t, caddr_t);
+long quotactl_fd(int, int, qid_t, caddr_t);
 
 #endif /* _QUOTA_ */

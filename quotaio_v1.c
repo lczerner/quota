@@ -117,10 +117,18 @@ static int v1_init_io(struct quota_handle *h)
 		}
 		else {
 			struct v1_kern_dqblk kdqblk;
+			int ret;
 
-			if (quotactl(QCMD(Q_V1_GETQUOTA, h->qh_type), h->qh_quotadev, 0, (void *)&kdqblk) < 0) {
-				if (errno == EPERM) {	/* We have no permission to get this information? */
-					h->qh_info.dqi_bgrace = h->qh_info.dqi_igrace = 0;	/* It hopefully won't be needed */
+			ret = handle_quotactl(Q_V1_GETQUOTA, h, 0,
+					      (void *)&kdqblk);
+			if (ret < 0) {
+				if (errno == EPERM) {
+					/*
+					 * We have no permission to get
+					 * this information?
+					 */
+					h->qh_info.dqi_bgrace = 0;
+					h->qh_info.dqi_igrace = 0;
 				}
 				else
 					return -1;
@@ -192,12 +200,17 @@ static int v1_write_info(struct quota_handle *h)
 		}
 		else {
 			struct v1_kern_dqblk kdqblk;
+			int ret;
 
-			if (quotactl(QCMD(Q_V1_GETQUOTA, h->qh_type), h->qh_quotadev, 0, (void *)&kdqblk) < 0)
+			ret = handle_quotactl(Q_V1_GETQUOTA, h, 0,
+					      (void *)&kdqblk);
+			if (ret < 0)
 				return -1;
 			kdqblk.dqb_btime = h->qh_info.dqi_bgrace;
 			kdqblk.dqb_itime = h->qh_info.dqi_igrace;
-			if (quotactl(QCMD(Q_V1_SETQUOTA, h->qh_type), h->qh_quotadev, 0, (void *)&kdqblk) < 0)
+			ret = handle_quotactl(Q_V1_SETQUOTA, h, 0,
+					      (void *)&kdqblk);
+			if (ret < 0)
 				return -1;
 		}
 	}
@@ -236,8 +249,12 @@ static struct dquot *v1_read_dquot(struct quota_handle *h, qid_t id)
 		}
 		else {
 			struct v1_kern_dqblk kdqblk;
+			int ret;
 
-			if (quotactl(QCMD(Q_V1_GETQUOTA, h->qh_type), h->qh_quotadev, id, (void *)&kdqblk) < 0) {
+			ret = handle_quotactl(Q_V1_GETQUOTA, h, id,
+					      (void *)&kdqblk);
+
+			if (ret < 0) {
 				free(dquot);
 				return NULL;
 			}
@@ -286,7 +303,7 @@ static int v1_commit_dquot(struct dquot *dquot, int flags)
 		}
 		else {
 			struct v1_kern_dqblk kdqblk;
-			int cmd;
+			int cmd, ret;
 
 			if (flags == COMMIT_USAGE)
 				cmd = Q_V1_SETUSE;
@@ -299,8 +316,9 @@ static int v1_commit_dquot(struct dquot *dquot, int flags)
 			else
 				cmd = Q_V1_SETQUOTA;
 			v1_util2kerndqblk(&kdqblk, &dquot->dq_dqb);
-			if (quotactl(QCMD(cmd, h->qh_type), h->qh_quotadev, dquot->dq_id,
-			     (void *)&kdqblk) < 0)
+			ret = handle_quotactl(cmd, h, dquot->dq_id,
+					      (void *)&kdqblk);
+			if (ret < 0)
 				return -1;
 		}
 	}

@@ -124,11 +124,9 @@ static inline int xfs_util2kerndqblk(struct xfs_kern_dqblk *k, struct util_dqblk
 static int xfs_init_io(struct quota_handle *h)
 {
 	struct xfs_mem_dqinfo info;
-	int qcmd;
 
-	qcmd = QCMD(Q_XFS_GETQSTAT, h->qh_type);
 	memset(&info, 0, sizeof(struct xfs_mem_dqinfo));
-	if (quotactl(qcmd, h->qh_quotadev, 0, (void *)&info) < 0)
+	if (handle_quotactl(Q_XFS_GETQSTAT, h, 0, (void *)&info) < 0)
 		return -1;
 	h->qh_info.dqi_bgrace = info.qs_btimelimit;
 	h->qh_info.dqi_igrace = info.qs_itimelimit;
@@ -142,7 +140,6 @@ static int xfs_init_io(struct quota_handle *h)
 static int xfs_write_info(struct quota_handle *h)
 {
 	struct xfs_kern_dqblk xdqblk;
-	int qcmd;
 
 	if (!XFS_USRQUOTA(h) && !XFS_GRPQUOTA(h) && !XFS_PRJQUOTA(h))
 		return 0;
@@ -152,8 +149,7 @@ static int xfs_write_info(struct quota_handle *h)
 	xdqblk.d_btimer = h->qh_info.dqi_bgrace;
 	xdqblk.d_itimer = h->qh_info.dqi_igrace;
 	xdqblk.d_fieldmask |= FS_DQ_TIMER_MASK;
-	qcmd = QCMD(Q_XFS_SETQLIM, h->qh_type);
-	if (quotactl(qcmd, h->qh_quotadev, 0, (void *)&xdqblk) < 0)
+	if (handle_quotactl(Q_XFS_SETQLIM, h, 0, (void *)&xdqblk) < 0)
 		return -1;
 	return 0;
 }
@@ -165,7 +161,6 @@ static struct dquot *xfs_read_dquot(struct quota_handle *h, qid_t id)
 {
 	struct dquot *dquot = get_empty_dquot();
 	struct xfs_kern_dqblk xdqblk;
-	int qcmd;
 
 	dquot->dq_id = id;
 	dquot->dq_h = h;
@@ -173,8 +168,7 @@ static struct dquot *xfs_read_dquot(struct quota_handle *h, qid_t id)
 	if (!XFS_USRQUOTA(h) && !XFS_GRPQUOTA(h) && !XFS_PRJQUOTA(h))
 		return dquot;
 
-	qcmd = QCMD(Q_XFS_GETQUOTA, h->qh_type);
-	if (quotactl(qcmd, h->qh_quotadev, id, (void *)&xdqblk) < 0) {
+	if (handle_quotactl(Q_XFS_GETQUOTA, h, id, (void *)&xdqblk) < 0) {
 		;
 	}
 	else {
@@ -191,7 +185,6 @@ static int xfs_commit_dquot(struct dquot *dquot, int flags)
 	struct quota_handle *h = dquot->dq_h;
 	struct xfs_kern_dqblk xdqblk;
 	qid_t id = dquot->dq_id;
-	int qcmd;
 
 	if (!XFS_USRQUOTA(h) && !XFS_GRPQUOTA(h) && !XFS_PRJQUOTA(h))
 		return 0;
@@ -218,8 +211,7 @@ static int xfs_commit_dquot(struct dquot *dquot, int flags)
 			xdqblk.d_fieldmask |= FS_DQ_TIMER_MASK;
 	}
 
-	qcmd = QCMD(Q_XFS_SETQLIM, h->qh_type);
-	if (quotactl(qcmd, h->qh_quotadev, id, (void *)&xdqblk) < 0)
+	if (handle_quotactl(Q_XFS_SETQLIM, h, id, (void *)&xdqblk) < 0)
 		return -1;
 	return 0;
 }
@@ -230,11 +222,10 @@ static int xfs_commit_dquot(struct dquot *dquot, int flags)
 static int xfs_get_dquot(struct dquot *dq)
 {
 	struct xfs_kern_dqblk d;
-	int qcmd = QCMD(Q_XFS_GETQUOTA, dq->dq_h->qh_type);
 	int ret;
 
 	memset(&d, 0, sizeof(d));
-	ret = quotactl(qcmd, dq->dq_h->qh_quotadev, dq->dq_id, (void *)&d);
+	ret = handle_quotactl(Q_XFS_GETQUOTA, dq->dq_h, dq->dq_id, (void *)&d);
 	if (ret < 0) {
 		if (errno == ENOENT)
 			return 0;
@@ -254,8 +245,8 @@ static int xfs_kernel_scan_dquots(struct quota_handle *h,
 
 	dquot->dq_h = h;
 	while (1) {
-		ret = quotactl(QCMD(Q_XGETNEXTQUOTA, h->qh_type),
-			       h->qh_quotadev, id, (void *)&xdqblk);
+		ret = handle_quotactl(Q_XGETNEXTQUOTA, h, id,
+				      (void *)&xdqblk);
 		if (ret < 0)
 			break;
 
@@ -286,8 +277,7 @@ static int xfs_scan_dquots(struct quota_handle *h, int (*process_dquot) (struct 
 	int ret;
 	struct xfs_kern_dqblk xdqblk;
 
-	ret = quotactl(QCMD(Q_XGETNEXTQUOTA, h->qh_type), h->qh_quotadev, 0,
-		       (void *)&xdqblk);
+	ret = handle_quotactl(Q_XGETNEXTQUOTA, h, 0, (void *)&xdqblk);
 	if (ret < 0 && (errno == ENOSYS || errno == EINVAL)) {
 		if (!XFS_USRQUOTA(h) && !XFS_GRPQUOTA(h) && !XFS_PRJQUOTA(h))
 			return 0;
